@@ -107,7 +107,7 @@ export default function Scene00Loading({ onDone }: Scene00LoadingProps) {
             transition={{ duration: 1.5, repeat: Infinity }}
             className="mt-6 font-hand text-xl text-rose-500"
           >
-            sentuh di mana pun ya~
+            SENTUH KUCINGNYAAA!!!~
           </motion.p>
         )}
       </div>
