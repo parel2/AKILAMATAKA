@@ -272,7 +272,7 @@ export default function Scene02Captcha({ onDone }: Scene02CaptchaProps) {
                   className="mb-3 text-center"
                 >
                   <span className="inline-block bg-rose-100 text-rose-500 font-hand text-sm px-4 py-1.5 rounded-full">
-                    Pilihan yang berani.
+                    JANGAN DIBORONG DONG.
                   </span>
                 </motion.div>
               )}
