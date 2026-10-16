@@ -12,10 +12,27 @@ interface Scene14CelebrationProps {
   onRestart: () => void;
 }
 
-type Phase = 'burst' | 'status' | 'card' | 'closing' | 'final' | 'done';
+type Phase = 'status' | 'card' | 'closing' | 'final' | 'done';
+
+const EASE = [0.22, 1, 0.36, 1] as const;
+
+// Linimasa adegan (milidetik sejak adegan mulai). Ubah angka di sini kalau mau atur tempo.
+const T = {
+  fadeOutStart: 300,   // lagu 1 mulai mengecil
+  fadeOutMs: 2500,     // durasi lagu 1 memudar sampai senyap
+  showHts: 800,        // tulisan "HUBUNGAN TANPA STATUS" muncul
+  strike: 5200,        // dicoret (masih senyap)
+  music2: 6900,        // lagu 2 mulai
+  music2FadeMs: 2000,  // lagu 2 naik pelan
+  reveal: 7800,        // berubah jadi "Pacaran" + confetti
+  card: 10000,         // kartu muncul
+  stamp: 11000,        // stempel RESMI
+  closing: 11700,      // kalimat penutup
+};
 
 export default function Scene14Celebration({ onRestart }: Scene14CelebrationProps) {
-  const [phase, setPhase] = useState<Phase>('burst');
+  const [phase, setPhase] = useState<Phase>('status');
+  const [htsVisible, setHtsVisible] = useState(false);
   const [statusStruck, setStatusStruck] = useState(false);
   const [statusChanged, setStatusChanged] = useState(false);
   const [stamped, setStamped] = useState(false);
@@ -26,10 +43,6 @@ export default function Scene14Celebration({ onRestart }: Scene14CelebrationProp
   const phaseTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    // 1. Crossfade audio
-    AudioManager.crossfadeToAfter(CONTENT.audio.crossfadeMs);
-
-    // 2. Confetti burst from bottom
     const fireConfetti = () => {
       confetti({
         particleCount: 80,
@@ -56,32 +69,37 @@ export default function Scene14Celebration({ onRestart }: Scene14CelebrationProp
         angle: -110,
       });
     };
-    fireConfetti();
-    haptics([60, 40, 60]);
 
-    // Timeline
-    phaseTimerRef.current = window.setTimeout(() => setPhase('status'), 1000);
-    const t2 = window.setTimeout(() => {
-      setStatusStruck(true);
-    }, 2200);
-    const t3 = window.setTimeout(() => {
+    const timers: number[] = [];
+    const at = (ms: number, fn: () => void) => {
+      timers.push(window.setTimeout(fn, ms));
+    };
+
+    // 1. Lagu 1 memudar, tulisan HTS muncul
+    at(T.fadeOutStart, () => AudioManager.fadeOutMain(T.fadeOutMs));
+    at(T.showHts, () => setHtsVisible(true));
+
+    // 2. Diam beberapa detik, lalu dicoret (masih senyap)
+    at(T.strike, () => setStatusStruck(true));
+
+    // 3. Lagu 2 mulai, lalu status berubah jadi Pacaran
+    at(T.music2, () => AudioManager.playAfter(T.music2FadeMs));
+    at(T.reveal, () => {
       setStatusChanged(true);
-      haptics([40, 30]);
-    }, 3000);
-    const t4 = window.setTimeout(() => setPhase('card'), 3800);
-    const t5 = window.setTimeout(() => {
+      fireConfetti();
+      haptics([60, 40, 60]);
+    });
+
+    // 4. Kartu, stempel, penutup
+    at(T.card, () => setPhase('card'));
+    at(T.stamp, () => {
       setStamped(true);
       haptics([50, 30, 50]);
-    }, 4800);
-    const t6 = window.setTimeout(() => setPhase('closing'), 5500);
+    });
+    at(T.closing, () => setPhase('closing'));
 
     return () => {
-      if (phaseTimerRef.current !== null) clearTimeout(phaseTimerRef.current);
-      clearTimeout(t2);
-      clearTimeout(t3);
-      clearTimeout(t4);
-      clearTimeout(t5);
-      clearTimeout(t6);
+      timers.forEach((id) => clearTimeout(id));
     };
   }, []);
 
@@ -139,61 +157,110 @@ export default function Scene14Celebration({ onRestart }: Scene14CelebrationProp
       scrollable
     >
       <div className="w-full max-w-sm flex flex-col items-center py-4">
-        {/* Status animation */}
-        <AnimatePresence>
-          {phase === 'status' || phase === 'card' || phase === 'closing' || phase === 'final' || phase === 'done' ? (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mb-6 text-center"
-            >
-              <div className="relative inline-block">
-                {!statusChanged ? (
-                  <motion.span
-                    animate={statusStruck ? { opacity: 0.4 } : {}}
-                    className="font-display text-2xl text-ink-soft"
-                  >
-                    {CONTENT.celebration.hts}
-                  </motion.span>
-                ) : null}
+        {/* Status: HUBUNGAN TANPA STATUS -> dicoret -> Pacaran */}
+        <motion.div
+          layout="position"
+          transition={{ duration: 0.9, ease: EASE }}
+          className="relative mb-6 min-h-[76px] w-full flex items-center justify-center"
+        >
+          {/* Cahaya lembut di belakang tulisan Pacaran */}
+          <motion.div
+            aria-hidden
+            className="absolute -inset-x-6 -inset-y-4 pointer-events-none"
+            style={{
+              background:
+                'radial-gradient(closest-side, rgba(255,163,184,0.55), rgba(255,163,184,0))',
+            }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: statusChanged ? 1 : 0 }}
+            transition={{ duration: 1.8, ease: 'easeOut' }}
+          />
 
-                {/* Strikethrough animation */}
-                {statusStruck && !statusChanged && (
+          <AnimatePresence mode="wait">
+            {htsVisible && !statusChanged && (
+              <motion.div
+                key="hts"
+                initial={{ opacity: 0, y: 8, filter: 'blur(6px)' }}
+                animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                exit={{
+                  opacity: 0,
+                  y: -10,
+                  filter: 'blur(8px)',
+                  transition: { duration: 0.7, ease: EASE },
+                }}
+                transition={{ duration: 1, ease: EASE }}
+                className="relative inline-block"
+              >
+                <motion.span
+                  animate={{ opacity: statusStruck ? 0.45 : 1 }}
+                  transition={{ duration: 0.9 }}
+                  className="font-display text-xl tracking-wider text-ink-soft whitespace-nowrap"
+                >
+                  {CONTENT.celebration.hts}
+                </motion.span>
+
+                {statusStruck && (
                   <motion.div
                     initial={{ scaleX: 0 }}
                     animate={{ scaleX: 1 }}
-                    transition={{ duration: 0.4 }}
-                    className="absolute top-1/2 left-0 right-0 h-0.5 bg-rose-500 origin-left"
+                    transition={{ duration: 0.9, ease: [0.65, 0, 0.35, 1] }}
+                    className="absolute top-1/2 -left-1 -right-1 h-[3px] -mt-px rounded-full bg-rose-500 origin-left"
                   />
                 )}
+              </motion.div>
+            )}
 
-                {/* New status */}
-                {statusChanged && (
-                  <motion.div
-                    initial={{ scale: 2, rotate: -10, opacity: 0 }}
-                    animate={{ scale: 1, rotate: 0, opacity: 1 }}
-                    transition={{ type: 'spring', stiffness: 200 }}
-                    className="flex items-center gap-2"
-                  >
-                    <span className="font-display text-3xl font-bold text-rose-500">
-                      {CONTENT.celebration.newStatus}
-                    </span>
-                    <motion.svg
-                      width="28"
-                      height="28"
-                      viewBox="0 0 24 24"
-                      fill="#F0537D"
-                      animate={{ scale: [1, 1.2, 1] }}
-                      transition={{ duration: 1, repeat: Infinity }}
+            {statusChanged && (
+              <motion.div
+                key="new"
+                className="relative flex items-center gap-2"
+                initial="hidden"
+                animate="show"
+                variants={{
+                  hidden: {},
+                  show: { transition: { staggerChildren: 0.08, delayChildren: 0.1 } },
+                }}
+              >
+                <span
+                  aria-label={CONTENT.celebration.newStatus}
+                  className="flex font-display text-4xl font-bold text-rose-500"
+                >
+                  {Array.from(CONTENT.celebration.newStatus).map((ch, i) => (
+                    <motion.span
+                      key={i}
+                      aria-hidden
+                      variants={{
+                        hidden: { opacity: 0, y: 14, filter: 'blur(6px)' },
+                        show: { opacity: 1, y: 0, filter: 'blur(0px)' },
+                      }}
+                      transition={{ duration: 0.9, ease: EASE }}
+                      className="inline-block"
                     >
-                      <path d="M12 21 C12 21 3 14 3 8.5 C3 5.5 5.5 3 8.5 3 C10 3 11.5 4 12 5.5 C12.5 4 14 3 15.5 3 C18.5 3 21 5.5 21 8.5 C21 14 12 21 12 21z" />
-                    </motion.svg>
-                  </motion.div>
-                )}
-              </div>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
+                      {ch === ' ' ? '\u00A0' : ch}
+                    </motion.span>
+                  ))}
+                </span>
+
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.4 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 1, delay: 0.7, ease: EASE }}
+                >
+                  <motion.svg
+                    width="28"
+                    height="28"
+                    viewBox="0 0 24 24"
+                    fill="#F0537D"
+                    animate={{ scale: [1, 1.15, 1] }}
+                    transition={{ duration: 1.3, repeat: Infinity, ease: 'easeInOut', delay: 1.8 }}
+                  >
+                    <path d="M12 21 C12 21 3 14 3 8.5 C3 5.5 5.5 3 8.5 3 C10 3 11.5 4 12 5.5 C12.5 4 14 3 15.5 3 C18.5 3 21 5.5 21 8.5 C21 14 12 21 12 21z" />
+                  </motion.svg>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
 
         {/* ID Card */}
         <AnimatePresence>
