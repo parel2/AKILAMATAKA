@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-type Track = 'main' | 'after';
+type Track = 'main' | 'after' | 'none';
 
 class AudioManagerClass {
   private main: HTMLAudioElement | null = null;
@@ -12,6 +12,7 @@ class AudioManagerClass {
   private afterVolume = 0.7;
   private fadeRaf: number | null = null;
   private crossfadeRaf: number | null = null;
+  private fadeOutRaf: number | null = null;
 
   init(mainSrc: string, afterSrc: string, mainVol: number, afterVol: number): void {
     if (this.main) return;
@@ -73,6 +74,45 @@ class AudioManagerClass {
     this.fadeRaf = requestAnimationFrame(tick);
   }
 
+
+  /** Matikan lagu 1 pelan-pelan sampai senyap (lalu di-pause). */
+  fadeOutMain(ms: number): void {
+    if (!this.main || this.currentTrack !== 'main') return;
+    // 'none' = sedang senyap, tombol mute tidak boleh menghidupkan lagu 1 lagi
+    this.currentTrack = 'none';
+
+    if (this.fadeRaf !== null) {
+      cancelAnimationFrame(this.fadeRaf);
+      this.fadeRaf = null;
+    }
+
+    const audio = this.main;
+    const startVolume = audio.volume;
+    const startTime = performance.now();
+
+    const tick = () => {
+      const t = Math.min((performance.now() - startTime) / ms, 1);
+      audio.volume = Math.max(0, startVolume * (1 - t));
+      if (t < 1) {
+        this.fadeOutRaf = requestAnimationFrame(tick);
+      } else {
+        this.fadeOutRaf = null;
+        audio.pause();
+      }
+    };
+    this.fadeOutRaf = requestAnimationFrame(tick);
+  }
+
+  /** Putar lagu 2 dari awal, volumenya naik pelan dari senyap. */
+  playAfter(ms: number): void {
+    if (!this.after || this.currentTrack === 'after') return;
+    this.currentTrack = 'after';
+    this.after.currentTime = 0;
+    this.after.volume = 0;
+    this.after.play().then(() => {}).catch(() => {});
+    this.fadeTo(this.after, this.muted ? 0 : this.afterVolume, ms);
+  }
+
   crossfadeToAfter(ms: number): void {
     if (!this.main || !this.after) return;
     if (this.crossfadeRaf !== null) {
@@ -113,6 +153,7 @@ class AudioManagerClass {
 
   setMuted(muted: boolean): void {
     this.muted = muted;
+    if (this.currentTrack === 'none') return;
     const active = this.currentTrack === 'main' ? this.main : this.after;
     if (active) {
       const targetVol = this.currentTrack === 'main' ? this.mainVolume : this.afterVolume;
@@ -139,7 +180,7 @@ class AudioManagerClass {
   }
 
   resumeActive(): void {
-    if (this.muted) return;
+    if (this.muted || this.currentTrack === 'none') return;
     const active = this.currentTrack === 'main' ? this.main : this.after;
     active?.play().then(() => {}).catch(() => {});
   }
@@ -150,11 +191,21 @@ class AudioManagerClass {
       cancelAnimationFrame(this.crossfadeRaf);
       this.crossfadeRaf = null;
     }
+    if (this.fadeOutRaf !== null) {
+      cancelAnimationFrame(this.fadeOutRaf);
+      this.fadeOutRaf = null;
+    }
+    if (this.fadeRaf !== null) {
+      cancelAnimationFrame(this.fadeRaf);
+      this.fadeRaf = null;
+    }
     this.after.pause();
     this.after.volume = 0;
     this.currentTrack = 'main';
-    this.main.volume = this.muted ? 0 : this.mainVolume;
+    this.main.currentTime = 0;
+    this.main.volume = 0;
     this.main.play().then(() => {}).catch(() => {});
+    this.fadeTo(this.main, this.muted ? 0 : this.mainVolume, 1200);
   }
 }
 
